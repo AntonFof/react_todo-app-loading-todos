@@ -1,123 +1,88 @@
 /* eslint-disable jsx-a11y/label-has-associated-control */
 /* eslint-disable jsx-a11y/control-has-associated-label */
-import React, { useEffect } from 'react';
-import { UserWarning } from './UserWarning';
-import { getTodos, USER_ID } from './api/todos';
+import React, { useEffect, useState } from 'react';
+import { getTodos } from './api/todos';
+import { Todo } from './types/Todo';
+import { Header } from './components/Header';
 import { TodoList } from './components/TodoList';
 import { Footer } from './components/Footer';
-import { Header } from './components/Header';
-import { Notification } from './components/Notification';
-import { Todo } from './types/Todo';
-import { FilterState } from './types/FilterStates';
-import { MESSAGE } from './const';
+import { ErrorNotification } from './components/ErrorNotification';
 
-const getFilteredTodo = (todos: Todo[], query: FilterState): Todo[] => {
-  if (query === 'All') {
-    return todos;
-  }
+export enum ErrorType {
+  TodosLoad = 'Unable to load todos',
+  EmptyTitle = 'Title should not be empty',
+  UnableToAddTodo = 'Unable to add a todo',
+  UnableToDeleteTodo = 'Unable to delete a todo',
+  UnableToUpdateTodo = 'Unable to update a todo',
+}
 
-  return todos.filter(todo => todo.completed === (query === 'Completed'));
-};
-
-function wait(delay: number): Promise<void> {
-  return new Promise(resolve => {
-    setTimeout(resolve, delay);
-  });
+export enum Filter {
+  all = 'All',
+  active = 'Active',
+  completed = 'Completed',
 }
 
 export const App: React.FC = () => {
-  const [loadingTodoId, setLoadingTodoId] = React.useState<Todo['id'] | null>(
-    null,
-  );
-  const [errorMessage, setErrorMessage] = React.useState<string>('');
-  const [filterState, setFilterState] = React.useState<FilterState>('All');
-  const [todos, setTodos] = React.useState<Todo[]>([]);
-  const [filteredTodos, setFilteredTodos] = React.useState<Todo[]>([]);
+  const [isTodoEditing, setIsTodoEditing] = useState(false);
+  const [selectedPostId, setSelectedPostId] = useState(0);
+  const [currentError, setCurrentError] = useState<ErrorType | ''>('');
+  const [selectedFilter, setSelectedFilter] = useState(Filter.all);
+  const [todos, setTodos] = useState<Todo[]>([]);
 
   useEffect(() => {
     getTodos()
       .then(setTodos)
-      .catch(() => setErrorMessage(MESSAGE.UNABLE_LOAD));
+      .catch(() => {
+        setCurrentError(ErrorType.TodosLoad);
+      });
   }, []);
 
   useEffect(() => {
-    setFilteredTodos(getFilteredTodo(todos, filterState));
-  }, [filterState, todos]);
-
-  useEffect(() => {
-    if (errorMessage) {
-      const timeOutId = setTimeout(() => setErrorMessage(''), 3000);
-
-      return () => {
-        clearTimeout(timeOutId);
-      };
+    if (!currentError) {
+      return;
     }
-  }, [errorMessage]);
 
-  if (!USER_ID) {
-    return <UserWarning />;
-  }
+    const timer = setTimeout(() => {
+      setCurrentError('');
+    }, 3000);
 
-  const itemsLeft = todos.filter(todo => todo.completed === false).length;
+    return () => clearTimeout(timer);
+  }, [currentError]);
 
-  const onChange = (todo: Todo, fieldsToUpdate: Partial<Todo>) => {
-    setLoadingTodoId(todo.id);
-    const updatedTodo = { ...todo, ...fieldsToUpdate };
+  const activeTodos: number = todos.filter(
+    (todo: Todo) => !todo.completed,
+  ).length;
 
-    return wait(1)
-      .then(() => {
-        const updatedTodos = [...todos];
-        const index = updatedTodos.findIndex(
-          currentTodo => currentTodo.id === todo.id,
-        );
-
-        updatedTodos.splice(index, 1, updatedTodo);
-        setTodos(updatedTodos);
-      })
-      .catch(error => {
-        setErrorMessage(MESSAGE.UNABLE_UPDARE);
-        throw Error(error);
-      })
-      .finally(() => setLoadingTodoId(null));
-  };
-
-  const onDelete = (todo: Todo) => {
-    setLoadingTodoId(todo.id);
-
-    return wait(1)
-      .then(() =>
-        setTodos(todos.filter(currentTodo => todo.id !== currentTodo.id)),
-      )
-      .then(() => setLoadingTodoId(null));
-  };
+  const completedTodos: number = todos.filter(
+    (todo: Todo) => todo.completed,
+  ).length;
 
   return (
     <div className="todoapp">
       <h1 className="todoapp__title">todos</h1>
 
       <div className="todoapp__content">
-        <Header />
-        {todos.length ? (
-          <>
-            <TodoList
-              lodingId={loadingTodoId}
-              todos={filteredTodos}
-              onChange={onChange}
-              onDelete={onDelete}
-            />
-
-            <Footer
-              itemsLeft={itemsLeft}
-              filterState={filterState}
-              onFilter={setFilterState}
-            />
-          </>
-        ) : null}
+        <Header todos={todos} completedTodos={completedTodos} />
+        <TodoList
+          selectedFilter={selectedFilter}
+          visibleTodos={todos}
+          isTodoEditing={isTodoEditing}
+          selectedPostId={selectedPostId}
+          setIsTodoEditing={setIsTodoEditing}
+          setSelectedPostId={setSelectedPostId}
+        />
+        {!!todos.length && (
+          <Footer
+            activeTodos={activeTodos}
+            selectedFilter={selectedFilter}
+            setSelectedFilter={setSelectedFilter}
+            completedTodos={completedTodos}
+          />
+        )}
       </div>
-
-      <Notification
-        errorMessage={errorMessage}
-        onClearMessage={() => setErrorMessage('')}
+      <ErrorNotification
+        currentError={currentError}
+        setCurrentError={setCurrentError}
       />
     </div>
   );
